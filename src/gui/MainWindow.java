@@ -12,8 +12,10 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.rmi.UnexpectedException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -33,20 +35,23 @@ import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTextPane;
 import javax.swing.SwingWorker;
 
+import org.apache.commons.lang3.exception.ExceptionUtils;
+
 public class MainWindow {
-	
+
+	private static String OS = System.getProperty("os.name").toLowerCase();
+
 	private final int LINES_IN_TEXT_AREA = 11;
 	private final String CONFIGURATION_FILE_NAME = "config";
 	private final String DEFAULT_LANGUAGE = "English";
 	private final String DEFAULT_WORKING_DIRECTORY = "~";
-	private final String LANGUAGES[] = {"English", "French", "German",
-			"Italian", "Russian", "Spanish"};
+	private final String LANGUAGES[] = { "English", "French", "German", "Italian", "Russian", "Spanish" };
 	private final String FILTER_PREFIX = "filter";
 	private final String TAGGER_PREFIX = "tagger";
 	private final String TMP_PREFIX = "tmp/tmp";
 	private final String LAST_WORKING_DIRECTORY = "lastWorkingDirectory";
 	private final String LAST_USED_LANGUAGE = "lastUsedLanguage";
-	
+
 	private File originallyLoadedFile;
 	private File currentlyProcessedFile;
 	private String lastWorkingDirectory;
@@ -80,30 +85,30 @@ public class MainWindow {
 	private JLabel lblSelectedTagger;
 	private JLabel lblFilter;
 	private JLabel lblSelectedFilter;
-	
+
 	public static void main(String[] args) {
 		EventQueue.invokeLater(new Runnable() {
 			public void run() {
-				try {
-					MainWindow window = new MainWindow();
-					window.frmWordSieve.setVisible(true);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+				MainWindow window = new MainWindow();
+				window.frmWordSieve.setVisible(true);
 			}
 		});
 	}
 
 	public MainWindow() {
-		Thread hook = new Thread() {
-            public void run() {
-                saveConfiguration();
-            }
-        };
-        Runtime.getRuntime().addShutdownHook(hook);
-		
-		initializeUI();
-		initializeVariables();
+		try {
+			Thread hook = new Thread() {
+				public void run() {
+					saveConfiguration();
+				}
+			};
+			Runtime.getRuntime().addShutdownHook(hook);
+
+			initializeUI();
+			initializeVariables();
+		} catch (Exception e) {
+			JOptionPane.showMessageDialog(frmWordSieve, ExceptionUtils.getStackTrace(e));
+		}
 	}
 
 	private void initializeUI() {
@@ -111,19 +116,19 @@ public class MainWindow {
 		frmWordSieve.setTitle("Word Sieve");
 		frmWordSieve.setBounds(100, 100, 535, 381);
 		frmWordSieve.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		
+
 		menuBar = new JMenuBar();
 		frmWordSieve.setJMenuBar(menuBar);
-		
+
 		mnFile = new JMenu("File");
 		menuBar.add(mnFile);
-		
+
 		mntmLoad = new JMenuItem("Load");
 		mntmLoad.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				JFileChooser chooser = new JFileChooser(lastWorkingDirectory);
 				int ret = chooser.showOpenDialog(frmWordSieve);
-				if(ret == JFileChooser.APPROVE_OPTION) {
+				if (ret == JFileChooser.APPROVE_OPTION) {
 					currentlyProcessedFile = chooser.getSelectedFile();
 					originallyLoadedFile = currentlyProcessedFile;
 					lastWorkingDirectory = currentlyProcessedFile.getParentFile().getAbsolutePath();
@@ -135,20 +140,21 @@ public class MainWindow {
 			}
 		});
 		mnFile.add(mntmLoad);
-		
+
 		mntmSaveAs = new JMenuItem("Save As");
 		mntmSaveAs.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				JFileChooser chooser = new JFileChooser(lastWorkingDirectory);
 				int ret = chooser.showSaveDialog(frmWordSieve);
-				if(ret == JFileChooser.APPROVE_OPTION) {
+				if (ret == JFileChooser.APPROVE_OPTION) {
 					final File selected = chooser.getSelectedFile();
 					lastWorkingDirectory = selected.getParentFile().getAbsolutePath();
 					final JDialog dialog = constructDialog("Saving...");
-					new SwingWorker<Void, Void>() {					
+					new SwingWorker<Void, Void>() {
 						protected void done() {
 							dialog.dispose();
 						}
+
 						protected Void doInBackground() throws Exception {
 							saveResultsToFile(selected);
 							return null;
@@ -159,11 +165,11 @@ public class MainWindow {
 			}
 		});
 		mnFile.add(mntmSaveAs);
-		
+
 		mnLanguage = new JMenu("Language");
 		menuBar.add(mnLanguage);
 
-		for(int i=0; i<LANGUAGES.length; i++) {
+		for (int i = 0; i < LANGUAGES.length; i++) {
 			final JRadioButtonMenuItem item = new JRadioButtonMenuItem(LANGUAGES[i]);
 			item.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent e) {
@@ -172,18 +178,19 @@ public class MainWindow {
 			});
 			mnLanguage.add(item);
 		}
-		
+
 		mnAction = new JMenu("Action");
 		menuBar.add(mnAction);
-		
+
 		mntmStripAnkiTranslations = new JMenuItem("Strip Anki translations");
 		mntmStripAnkiTranslations.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				final JDialog dialog = constructDialog("Computing...");
-				new SwingWorker<Void, Void>() {					
+				new SwingWorker<Void, Void>() {
 					protected void done() {
 						dialog.dispose();
 					}
+
 					protected Void doInBackground() throws Exception {
 						stripAnkiTranslations();
 						return null;
@@ -193,15 +200,16 @@ public class MainWindow {
 			}
 		});
 		mnAction.add(mntmStripAnkiTranslations);
-		
+
 		mntmCountSortWithStats = new JMenuItem("Count&Sort with stats");
 		mntmCountSortWithStats.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				final JDialog dialog = constructDialog("Computing...");
-				new SwingWorker<Void, Void>() {					
+				new SwingWorker<Void, Void>() {
 					protected void done() {
 						dialog.dispose();
 					}
+
 					protected Void doInBackground() throws Exception {
 						countSortWithStats();
 						return null;
@@ -211,15 +219,16 @@ public class MainWindow {
 			}
 		});
 		mnAction.add(mntmCountSortWithStats);
-		
+
 		mntmCountSortWithoutStats = new JMenuItem("Count&Sort without stats");
 		mntmCountSortWithoutStats.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				final JDialog dialog = constructDialog("Computing...");
-				new SwingWorker<Void, Void>() {					
+				new SwingWorker<Void, Void>() {
 					protected void done() {
 						dialog.dispose();
 					}
+
 					protected Void doInBackground() throws Exception {
 						countSortWithoutStats();
 						return null;
@@ -229,15 +238,16 @@ public class MainWindow {
 			}
 		});
 		mnAction.add(mntmCountSortWithoutStats);
-		
+
 		mntmFilter = new JMenuItem("Filter");
 		mntmFilter.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				final JDialog dialog = constructDialog("Computing...");
-				new SwingWorker<Void, Void>() {					
+				new SwingWorker<Void, Void>() {
 					protected void done() {
 						dialog.dispose();
 					}
+
 					protected Void doInBackground() throws Exception {
 						filter();
 						return null;
@@ -247,13 +257,13 @@ public class MainWindow {
 			}
 		});
 		mnAction.add(mntmFilter);
-		
+
 		mntmUndo = new JMenuItem("Undo last action");
 		mntmUndo.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				currentTmp--;
-				if(currentTmp >= 0) {
-					currentlyProcessedFile = new File(TMP_PREFIX+currentTmp);
+				if (currentTmp >= 0) {
+					currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
 				} else {
 					currentlyProcessedFile = originallyLoadedFile;
 					mntmUndo.setEnabled(false);
@@ -263,17 +273,17 @@ public class MainWindow {
 		});
 		mntmUndo.setEnabled(false);
 		mnAction.add(mntmUndo);
-		
+
 		mnFilter = new JMenu("Filter");
 		menuBar.add(mnFilter);
-		
-		for(String s : LANGUAGES) {
+
+		for (String s : LANGUAGES) {
 			final JMenuItem item = new JMenuItem(s);
 			item.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent e) {
 					JFileChooser chooser = new JFileChooser(lastWorkingDirectory);
 					int ret = chooser.showOpenDialog(frmWordSieve);
-					if(ret == JFileChooser.APPROVE_OPTION) {
+					if (ret == JFileChooser.APPROVE_OPTION) {
 						File selected = chooser.getSelectedFile();
 						filterMap.put(item.getText(), selected.getAbsolutePath());
 						lastWorkingDirectory = selected.getParentFile().getAbsolutePath();
@@ -282,17 +292,17 @@ public class MainWindow {
 			});
 			mnFilter.add(item);
 		}
-		
+
 		mnTagger = new JMenu("Tagger");
 		menuBar.add(mnTagger);
-		
-		for(String s : LANGUAGES) {
+
+		for (String s : LANGUAGES) {
 			final JMenuItem item = new JMenuItem(s);
 			item.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent e) {
 					JFileChooser chooser = new JFileChooser(lastWorkingDirectory);
 					int ret = chooser.showOpenDialog(frmWordSieve);
-					if(ret == JFileChooser.APPROVE_OPTION) {
+					if (ret == JFileChooser.APPROVE_OPTION) {
 						File selected = chooser.getSelectedFile();
 						taggerMap.put(item.getText(), selected.getAbsolutePath());
 						lastWorkingDirectory = selected.getParentFile().getAbsolutePath();
@@ -301,145 +311,142 @@ public class MainWindow {
 			});
 			mnTagger.add(item);
 		}
-		
+
 		frmWordSieve.getContentPane().setLayout(null);
-		
+
 		lblLanguage = new JLabel("Language:");
 		lblLanguage.setBounds(12, 39, 80, 15);
 		frmWordSieve.getContentPane().add(lblLanguage);
-		
+
 		lblFile = new JLabel("File:");
 		lblFile.setBounds(12, 12, 80, 15);
 		frmWordSieve.getContentPane().add(lblFile);
-		
+
 		lblSelectedLanguage = new JLabel("");
 		lblSelectedLanguage.setBounds(94, 39, 419, 15);
 		frmWordSieve.getContentPane().add(lblSelectedLanguage);
-		
+
 		lblSelectedFile = new JLabel("");
 		lblSelectedFile.setBounds(94, 12, 419, 15);
 		frmWordSieve.getContentPane().add(lblSelectedFile);
-		
+
 		txtpnPreview = new JTextPane();
 		txtpnPreview.setEditable(false);
 		txtpnPreview.setBounds(12, 147, 501, 171);
 		frmWordSieve.getContentPane().add(txtpnPreview);
-		
+
 		lblPreview = new JLabel("Preview:");
 		lblPreview.setBounds(12, 120, 80, 15);
 		frmWordSieve.getContentPane().add(lblPreview);
-		
+
 		lblTagger = new JLabel("Tagger:");
 		lblTagger.setBounds(12, 66, 80, 15);
 		frmWordSieve.getContentPane().add(lblTagger);
-		
+
 		lblSelectedTagger = new JLabel("");
 		lblSelectedTagger.setBounds(94, 66, 419, 15);
 		frmWordSieve.getContentPane().add(lblSelectedTagger);
-		
+
 		lblFilter = new JLabel("Filter:");
 		lblFilter.setBounds(12, 93, 80, 15);
 		frmWordSieve.getContentPane().add(lblFilter);
-		
+
 		lblSelectedFilter = new JLabel("");
 		lblSelectedFilter.setBounds(94, 93, 419, 15);
 		frmWordSieve.getContentPane().add(lblSelectedFilter);
 	}
-	
-	private void initializeVariables() {
+
+	private void initializeVariables() throws Exception {
 		filterMap = new HashMap<String, String>();
 		taggerMap = new HashMap<String, String>();
 		currentlyProcessedFile = null;
 		lastWorkingDirectory = DEFAULT_WORKING_DIRECTORY;
 		String tmpLanguage = DEFAULT_LANGUAGE;
 		try {
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(CONFIGURATION_FILE_NAME))));			
+			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					CONFIGURATION_FILE_NAME))));
 			String line;
-			
+
 			while ((line = in.readLine()) != null) {
 				String chunk[] = line.split("=");
-				if(chunk.length != 2) {
+				if (chunk.length != 2) {
 					System.out.println("zle sformatowane");
 					continue;
 				}
-				if(chunk[0].equals(LAST_WORKING_DIRECTORY))
+				if (chunk[0].equals(LAST_WORKING_DIRECTORY))
 					lastWorkingDirectory = chunk[1];
-				else if(chunk[0].equals(LAST_USED_LANGUAGE))
+				else if (chunk[0].equals(LAST_USED_LANGUAGE))
 					tmpLanguage = chunk[1];
-				else if(chunk[0].startsWith(FILTER_PREFIX))
+				else if (chunk[0].startsWith(FILTER_PREFIX))
 					filterMap.put(chunk[0].substring(FILTER_PREFIX.length()), chunk[1]);
-				else if(chunk[0].startsWith(TAGGER_PREFIX))
+				else if (chunk[0].startsWith(TAGGER_PREFIX))
 					taggerMap.put(chunk[0].substring(TAGGER_PREFIX.length()), chunk[1]);
 			}
 			switchLanguageTo(tmpLanguage);
 			in.close();
-		} catch(Exception e) {
+		} catch (Exception e) {
 			JOptionPane.showMessageDialog(frmWordSieve, e.getMessage());
-		}		
+			throw e;
+		}
 	}
-	
+
 	private void loadFileContentToPreview() {
 		try {
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(currentlyProcessedFile))));	
+			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					currentlyProcessedFile))));
 			String line;
 			String buffer = "";
-			for(int i=0; i<LINES_IN_TEXT_AREA; i++) {
-				if((line = in.readLine()) == null)
+			for (int i = 0; i < LINES_IN_TEXT_AREA; i++) {
+				if ((line = in.readLine()) == null)
 					break;
 				buffer = buffer + line + "\n";
 			}
 			txtpnPreview.setText(buffer);
-		} catch(Exception e) {
-			JOptionPane.showMessageDialog(frmWordSieve, e.getMessage());
+		} catch (Exception e) {
+			JOptionPane.showMessageDialog(frmWordSieve, "Error loading preview: " + e.getMessage());
+			throw new RuntimeException(e);
 		}
 	}
-	
+
 	private void switchLanguageTo(String l) {
 		language = l;
-		for(int i=0; i<mnLanguage.getItemCount(); i++) 
+		for (int i = 0; i < mnLanguage.getItemCount(); i++)
 			mnLanguage.getItem(i).setSelected(mnLanguage.getItem(i).getText().equals(l));
 		lblSelectedLanguage.setText(l);
-		if(filterMap.get(l) != null)
+		if (filterMap.get(l) != null)
 			lblSelectedFilter.setText(new File(filterMap.get(l)).getName());
 		else
 			lblSelectedFilter.setText("");
-		if(taggerMap.get(l) != null)
+		if (taggerMap.get(l) != null)
 			lblSelectedTagger.setText(new File(taggerMap.get(l)).getName());
 		else
 			lblSelectedTagger.setText("");
 	}
-	
+
 	private void saveConfiguration() {
 		try {
 			PrintWriter out = new PrintWriter(new FileWriter(CONFIGURATION_FILE_NAME));
-			
-			out.println(LAST_WORKING_DIRECTORY+"="+lastWorkingDirectory);
-			out.println(LAST_USED_LANGUAGE+"="+language);
-			for(Map.Entry<String, String> entry : filterMap.entrySet())
-				out.println(FILTER_PREFIX+entry.getKey()+"="+entry.getValue());
-			for(Map.Entry<String, String> entry : taggerMap.entrySet())
-				out.println(TAGGER_PREFIX+entry.getKey()+"="+entry.getValue());
-			
+
+			out.println(LAST_WORKING_DIRECTORY + "=" + lastWorkingDirectory);
+			out.println(LAST_USED_LANGUAGE + "=" + language);
+			for (Map.Entry<String, String> entry : filterMap.entrySet())
+				out.println(FILTER_PREFIX + entry.getKey() + "=" + entry.getValue());
+			for (Map.Entry<String, String> entry : taggerMap.entrySet())
+				out.println(TAGGER_PREFIX + entry.getKey() + "=" + entry.getValue());
+
 			out.close();
-		} catch(Exception ex) {
+		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+			throw new RuntimeException(ex);
 		}
 	}
-	
-	private void stripAnkiTranslations() {
+
+	private void stripAnkiTranslations() throws Exception {
 		try {
 			currentTmp++;
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(currentlyProcessedFile))));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX+currentTmp));					
+			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					currentlyProcessedFile))));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
 			String line;
 
 			while ((line = in.readLine()) != null && !processingCancelled) {
@@ -449,19 +456,20 @@ public class MainWindow {
 			}
 			in.close();
 			out.close();
-			
-			if(processingCancelled) {
+
+			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX+currentTmp);
+				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
-		} catch(Exception ex) {
+		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+			throw ex;
 		}
 	}
-	
+
 	private JDialog constructDialog(String message) {
 		processingCancelled = false;
 		final JDialog dialog = new JDialog(frmWordSieve, true);
@@ -481,14 +489,12 @@ public class MainWindow {
 		dialog.getContentPane().add(button);
 		return dialog;
 	}
-	
-	private void saveResultsToFile(File file) {
+
+	private void saveResultsToFile(File file) throws Exception {
 		try {
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(currentlyProcessedFile))));
-			PrintWriter out = new PrintWriter(new FileWriter(file));					
+			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					currentlyProcessedFile))));
+			PrintWriter out = new PrintWriter(new FileWriter(file));
 			String line;
 
 			while ((line = in.readLine()) != null && !processingCancelled) {
@@ -496,173 +502,196 @@ public class MainWindow {
 			}
 			in.close();
 			out.close();
-			if(processingCancelled) {
+			if (processingCancelled) {
 				file.delete();
-			}			
-		} catch(Exception ex) {
+			}
+		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+			throw ex;
 		}
 	}
-	
-	private void countSortWithStats() {
+
+	private Process executeTagger() throws IOException {
+		if (isUnix()) {
+			return Runtime.getRuntime().exec(taggerMap.get(language) + " " + currentlyProcessedFile.getAbsolutePath());
+		} else if (isWindows()) {
+			return Runtime.getRuntime().exec(
+					"cmd.exe /c tag-" + language.toLowerCase() + " " + currentlyProcessedFile.getAbsolutePath());
+		} else {
+			throw new UnexpectedException("Could not recognize the operating system");
+		}
+	}
+
+	private PrintWriter getWriterToTmp(String filename) throws IOException {
+		File f = new File("tmp");
+		if (!f.exists() || !f.isDirectory()) {
+			throw new IOException("'tmp' directory doesn't exist. Create it!");
+		}
+		return new PrintWriter(new FileWriter(filename));
+	}
+
+	private void countSortWithStats() throws Exception {
 		if (currentlyProcessedFile.getAbsolutePath().contains(" ")) {
 			JOptionPane.showMessageDialog(frmWordSieve, "Cannot process files that have spaces in their path");
 			return;
 		}
 		try {
 			currentTmp++;
-			Process p = Runtime.getRuntime().exec(taggerMap.get(language)+" "+
-					currentlyProcessedFile.getAbsolutePath());
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(p.getInputStream()));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp)); 
+			Process p = executeTagger();
+			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
+			PrintWriter out = getWriterToTmp(TMP_PREFIX + currentTmp);
 			String line;
 			List<Stat> list = new ArrayList<Stat>();
 
 			while ((line = in.readLine()) != null && !processingCancelled) {
 				String[] splitted = line.split("\t");
-				String s = splitted[splitted.length-1];
+				String s = splitted[splitted.length - 1];
 				addWordToList(s, list);
 			}
 			p.waitFor();
-			
+
 			sort(list, new MyComparator());
 
-			int i=1;
-			for(Stat s : list) {
+			int i = 1;
+			for (Stat s : list) {
 				out.println((i++) + " " + s.word + " " + s.occurrences);
 			}
 			in.close();
 			out.close();
-			
-			if(processingCancelled) {
+
+			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX+currentTmp);
+				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
-		} catch(Exception ex) {
-			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+		} catch (Exception ex) {
+			JOptionPane.showMessageDialog(frmWordSieve, ExceptionUtils.getStackTrace(ex));
+			throw new RuntimeException(ex);
 		}
 	}
-	
-	private void countSortWithoutStats() {
+
+	private void countSortWithoutStats() throws Exception {
 		if (currentlyProcessedFile.getAbsolutePath().contains(" ")) {
 			JOptionPane.showMessageDialog(frmWordSieve, "Cannot process files that have spaces in their path");
 			return;
 		}
 		try {
 			currentTmp++;
-			Process p = Runtime.getRuntime().exec(taggerMap.get(language)+" "+
-					currentlyProcessedFile.getAbsolutePath());
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(p.getInputStream()));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp)); 
+			Process p = Runtime.getRuntime().exec(
+					taggerMap.get(language) + " " + currentlyProcessedFile.getAbsolutePath());
+			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
 			String line;
 			List<Stat> list = new ArrayList<Stat>();
 
 			while ((line = in.readLine()) != null && !processingCancelled) {
 				String[] splitted = line.split("\t");
-				String s = splitted[splitted.length-1];
+				String s = splitted[splitted.length - 1];
 				addWordToList(s, list);
 			}
 			p.waitFor();
-			
+
 			sort(list, new MyComparator());
 
-			for(Stat s : list) {
+			for (Stat s : list) {
 				out.println(s.word);
 			}
 			in.close();
 			out.close();
-			
-			if(processingCancelled) {
+
+			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX+currentTmp);
+				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
-		} catch(Exception ex) {
+		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+			throw ex;
 		}
 	}
-	
-	private void filter() {
+
+	private void filter() throws Exception {
 		try {
 			currentTmp++;
-			BufferedReader in = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(currentlyProcessedFile))));
-			BufferedReader inFilter = new BufferedReader(
-					new InputStreamReader(
-							new DataInputStream(
-									new FileInputStream(filterMap.get(language)))));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX+currentTmp));					
+			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					currentlyProcessedFile))));
+			BufferedReader inFilter = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
+					filterMap.get(language)))));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
 			String line;
 			List<String> filterList = new ArrayList<String>();
-			
-			while((line = inFilter.readLine()) != null && !processingCancelled) {
+
+			while ((line = inFilter.readLine()) != null && !processingCancelled) {
 				filterList.add(line);
 			}
 
-			while((line = in.readLine()) != null && !processingCancelled) {
+			while ((line = in.readLine()) != null && !processingCancelled) {
 				String[] splitted = line.split(" ");
 				String s;
-				if(splitted.length == 1) 
+				if (splitted.length == 1)
 					s = splitted[0];
-				else if(splitted.length == 3)
+				else if (splitted.length == 3)
 					s = splitted[1];
-				else 
+				else
 					continue;
-				if(filterList.contains(s))
+				if (filterList.contains(s))
 					continue;
 				out.println(line);
 			}
 			in.close();
 			inFilter.close();
 			out.close();
-			
-			if(processingCancelled) {
+
+			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX+currentTmp);
+				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
-			}			
-		} catch(Exception ex) {
+			}
+		} catch (Exception ex) {
 			JOptionPane.showMessageDialog(frmWordSieve, ex.getMessage());
+			throw ex;
 		}
 	}
-	
+
 	private void addWordToList(String word, List<Stat> list) {
-		for(Stat s : list) {
-			if(s.word.equals(word))
-			{
+		for (Stat s : list) {
+			if (s.word.equals(word)) {
 				s.occurrences++;
 				return;
-			}		
+			}
 		}
 		list.add(new Stat(word, 1));
+	}
+
+	private static boolean isWindows() {
+		return (OS.indexOf("win") >= 0);
+	}
+
+	private static boolean isUnix() {
+		return (OS.indexOf("nix") >= 0 || OS.indexOf("nux") >= 0 || OS.indexOf("aix") > 0);
 	}
 
 	private class Stat {
 		String word;
 		int occurrences;
-		
+
 		public Stat(String word, int occurrences) {
 			this.word = word;
 			this.occurrences = occurrences;
 		}
 	}
-	
+
 	private class MyComparator implements Comparator<Stat> {
 		public int compare(Stat s1, Stat s2) {
 			return s2.occurrences - s1.occurrences;
 		}
-		
+
 		public boolean equals(Object obj) {
 			return false;
 		}

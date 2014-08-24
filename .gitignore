@@ -17,11 +17,14 @@ hs_err_pid*
 .settings
 
 # other
-
 .config.bak.txt
 config
 TreeTagger
 filters
 res.txt
 tmp
+
+#jars
+!miglayout15-swing.jar
+!commons-lang3-3.3.2.jar
 
