@@ -588,10 +588,9 @@ public class MainWindow {
 		}
 		try {
 			currentTmp++;
-			Process p = Runtime.getRuntime().exec(
-					taggerMap.get(language) + " " + currentlyProcessedFile.getAbsolutePath());
+			Process p = executeTagger();
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_DIR + "/" + TMP_PREFIX + currentTmp));
+			PrintWriter out = getWriterToTmp(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 			String line;
 			List<Stat> list = new ArrayList<Stat>();
 
