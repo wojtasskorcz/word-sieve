@@ -48,7 +48,8 @@ public class MainWindow {
 	private final String LANGUAGES[] = { "English", "French", "German", "Italian", "Russian", "Spanish" };
 	private final String FILTER_PREFIX = "filter";
 	private final String TAGGER_PREFIX = "tagger";
-	private final String TMP_PREFIX = "tmp/tmp";
+	private final String TMP_PREFIX = "tmp";
+	private final String TMP_DIR = "tmp";
 	private final String LAST_WORKING_DIRECTORY = "lastWorkingDirectory";
 	private final String LAST_USED_LANGUAGE = "lastUsedLanguage";
 
@@ -263,7 +264,7 @@ public class MainWindow {
 			public void actionPerformed(ActionEvent arg0) {
 				currentTmp--;
 				if (currentTmp >= 0) {
-					currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
+					currentlyProcessedFile = new File(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 				} else {
 					currentlyProcessedFile = originallyLoadedFile;
 					mntmUndo.setEnabled(false);
@@ -287,6 +288,7 @@ public class MainWindow {
 						File selected = chooser.getSelectedFile();
 						filterMap.put(item.getText(), selected.getAbsolutePath());
 						lastWorkingDirectory = selected.getParentFile().getAbsolutePath();
+						lblSelectedFilter.setText(selected.getName());
 					}
 				}
 			});
@@ -306,6 +308,7 @@ public class MainWindow {
 						File selected = chooser.getSelectedFile();
 						taggerMap.put(item.getText(), selected.getAbsolutePath());
 						lastWorkingDirectory = selected.getParentFile().getAbsolutePath();
+						lblSelectedTagger.setText(selected.getName());
 					}
 				}
 			});
@@ -385,8 +388,7 @@ public class MainWindow {
 			switchLanguageTo(tmpLanguage);
 			in.close();
 		} catch (Exception e) {
-			JOptionPane.showMessageDialog(frmWordSieve, e.getMessage());
-			throw e;
+			JOptionPane.showMessageDialog(frmWordSieve, "Could not find 'config' file. Running with default settings.");
 		}
 	}
 
@@ -446,7 +448,7 @@ public class MainWindow {
 			currentTmp++;
 			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
 					currentlyProcessedFile))));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_DIR + "/" + TMP_PREFIX + currentTmp));
 			String line;
 
 			while ((line = in.readLine()) != null && !processingCancelled) {
@@ -460,7 +462,7 @@ public class MainWindow {
 			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
+				currentlyProcessedFile = new File(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
@@ -512,6 +514,10 @@ public class MainWindow {
 	}
 
 	private Process executeTagger() throws IOException {
+		if (language == null) {
+			JOptionPane.showMessageDialog(frmWordSieve, "Choose the appropriate language!");
+			throw new AssertionError("Language not selected");
+		}
 		if (isUnix()) {
 			return Runtime.getRuntime().exec(taggerMap.get(language) + " " + currentlyProcessedFile.getAbsolutePath());
 		} else if (isWindows()) {
@@ -522,12 +528,16 @@ public class MainWindow {
 		}
 	}
 
-	private PrintWriter getWriterToTmp(String filename) throws IOException {
-		File f = new File("tmp");
-		if (!f.exists() || !f.isDirectory()) {
-			throw new IOException("'tmp' directory doesn't exist. Create it!");
+	private PrintWriter getWriterToTmp(String path) throws IOException {
+		File f = new File(TMP_DIR);
+		if (!f.isDirectory()) {
+			if (f.exists()) {
+				throw new IOException("'" + TMP_DIR + "' directory is needed but such file exists");
+			} else {
+				f.mkdirs();
+			}
 		}
-		return new PrintWriter(new FileWriter(filename));
+		return new PrintWriter(new FileWriter(path));
 	}
 
 	private void countSortWithStats() throws Exception {
@@ -539,7 +549,7 @@ public class MainWindow {
 			currentTmp++;
 			Process p = executeTagger();
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
-			PrintWriter out = getWriterToTmp(TMP_PREFIX + currentTmp);
+			PrintWriter out = getWriterToTmp(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 			String line;
 			List<Stat> list = new ArrayList<Stat>();
 
@@ -562,13 +572,12 @@ public class MainWindow {
 			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
+				currentlyProcessedFile = new File(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
 		} catch (Exception ex) {
-			JOptionPane.showMessageDialog(frmWordSieve, ExceptionUtils.getStackTrace(ex));
-			throw new RuntimeException(ex);
+			throw ex;
 		}
 	}
 
@@ -582,7 +591,7 @@ public class MainWindow {
 			Process p = Runtime.getRuntime().exec(
 					taggerMap.get(language) + " " + currentlyProcessedFile.getAbsolutePath());
 			BufferedReader in = new BufferedReader(new InputStreamReader(p.getInputStream()));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_DIR + "/" + TMP_PREFIX + currentTmp));
 			String line;
 			List<Stat> list = new ArrayList<Stat>();
 
@@ -604,7 +613,7 @@ public class MainWindow {
 			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
+				currentlyProcessedFile = new File(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
@@ -615,13 +624,21 @@ public class MainWindow {
 	}
 
 	private void filter() throws Exception {
+		if (language == null) {
+			JOptionPane.showMessageDialog(frmWordSieve, "Choose the appropriate language!");
+			throw new AssertionError("Language not selected");
+		}
+		if (!filterMap.containsKey(language)) {
+			JOptionPane.showMessageDialog(frmWordSieve, "No filter file was specified for this language!");
+			throw new AssertionError("Filter file not specified");
+		}
 		try {
 			currentTmp++;
 			BufferedReader in = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
 					currentlyProcessedFile))));
 			BufferedReader inFilter = new BufferedReader(new InputStreamReader(new DataInputStream(new FileInputStream(
 					filterMap.get(language)))));
-			PrintWriter out = new PrintWriter(new FileWriter(TMP_PREFIX + currentTmp));
+			PrintWriter out = new PrintWriter(new FileWriter(TMP_DIR + "/" + TMP_PREFIX + currentTmp));
 			String line;
 			List<String> filterList = new ArrayList<String>();
 
@@ -649,7 +666,7 @@ public class MainWindow {
 			if (processingCancelled) {
 				currentTmp--;
 			} else {
-				currentlyProcessedFile = new File(TMP_PREFIX + currentTmp);
+				currentlyProcessedFile = new File(TMP_DIR + "/" + TMP_PREFIX + currentTmp);
 				loadFileContentToPreview();
 				mntmUndo.setEnabled(true);
 			}
